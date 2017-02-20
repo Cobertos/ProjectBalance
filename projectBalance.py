@@ -83,8 +83,9 @@ def test():
 
 def main():
     #DEFINE ALL BUDGETARY CONSTRAINTS
-    transactions = []
-
+    transactions = [
+        
+    ]
     #END DEFINE
     #Do the actual work
     fromDate = datetime.today()
