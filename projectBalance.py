@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from dateutil.rrule import rrule, DAILY
+from dateutil.rrule import rrule, DAILY, YEARLY, MONTHLY, WEEKLY
 import plotly.offline as offline
 import plotly.graph_objs as go
 
@@ -27,8 +27,9 @@ class Transaction:
         """
         Returns boolean if this transaction will cause a charge on the given day
         """
+        #If datetime, just return if the dates are equal, if a rrule, map to date()s and check in list
         return isinstance(self.when, datetime) and self.when.date() == dayTime.date() \
-            or isinstance(self.when, rrule) and dayTime in self.when
+            or isinstance(self.when, rrule) and dayTime.date() in map(lambda dt: dt.date(), self.when)
 
 def projectBalances(transactions, startAmount, fromDate, toDate):
     balances = []
@@ -82,15 +83,18 @@ def test():
     #createBalanceGraph(bs, ds[0], ds[4]) #WORKS
 
 def main():
+
+    startAmount = 1800
+    fromDate = datetime.today()
+    toDate = datetime.today() + timedelta(days=400)
+
     #DEFINE ALL BUDGETARY CONSTRAINTS
     transactions = [
-        
     ]
     #END DEFINE
+
     #Do the actual work
-    fromDate = datetime.today()
-    toDate = datetime.today() + timedelta(days=100)
-    balances = projectBalances(1800, fromDate, toDate, transactions)
+    balances = projectBalances(transactions, startAmount, fromDate, toDate)
     createBalanceGraph(balances, fromDate, toDate)
 
 if __name__ == "__main__":
