@@ -32,39 +32,67 @@ class Transaction:
         return isinstance(self.when, datetime) and self.when.date() == dayTime.date() \
             or isinstance(self.when, rrule) and dayTime.date() in map(lambda dt: dt.date(), self.when)
 
-def projectBalances(transactions, startAmount, fromDate, toDate):
-    balances = []
+def projectDiffs(transactions, fromDate, toDate):
+    """
+    Projects the differences in balance from the previous day for all dats in
+    fromDate to toDate using the transactions defined
+    """
+    diffs = []
     for day in rrule(DAILY, dtstart=fromDate, until=toDate):
         #Calculate the sum of all charges for given day
         ts = transactions[:]
         amnts = map((lambda t: t.getAmountForDay(day)), ts)
-        tSum = balances[-1] if balances else startAmount
-        for amnt in amnts:
-            tSum += amnt
-        #Append to balances
-        balances.append(tSum)
+        tSum = sum(amnts)
+        #Append to diffs
+        diffs.append(tSum)
 
-    return balances
+    return diffs
 
 #def getTransactionsFromFile(filePath):
 
-def createBalanceGraph(balances, fromDate, toDate, saveProportion, displayLowerLimit):
+def createBalanceGraph(diffs, fromDate, toDate, startAmount, saveProportion, displayLowerLimit):
     dayLabels = rrule(DAILY, dtstart=fromDate, until=toDate)
     dayLabels = map((lambda dt: dt.strftime("%a, %b %d")), dayLabels)
     dayLabels = list(dayLabels)
 
-    saveBalances = [b * saveProportion if b > 0 else b for b in balances]
+    print(saveProportion)
+
+    balances = []
+    saveBalances = []
+    currentBalance = currentSaveBalance = startAmount
+    for diff in diffs:
+        currentBalance += diff
+        balances.append(currentBalance)
+
+        currentSaveBalance += diff if diff < 0 else (diff * (1-saveProportion))
+        saveBalances.append(currentSaveBalance)
+        
+
     lowerLimitBalances = []
     currentLowerLimit = math.inf
+    #Run through balances backward (because lower limit can only
+    #be known from the future expenses) and prepend to get it
+    #back into the same order
     for i, balance in reversed(list(enumerate(saveBalances))):
         currentLowerLimit = min(balance,currentLowerLimit)
         lowerLimitBalances.insert(0, currentLowerLimit)
 
-    trace0 = go.Scatter(x=dayLabels, y=balances, fill="tonexty", mode="none")
-    trace1 = go.Scatter(x=dayLabels, y=saveBalances, fill="tonexty", mode="none")
-    trace2 = go.Scatter(x=dayLabels, y=lowerLimitBalances, fill="tozeroy", mode="none")
+    trace0 = go.Scatter(x=dayLabels, y=balances,
+        fill="tonexty", mode="none", name="Balance", fillcolor="rgba(31, 119, 180, 0.5)")
+    trace1 = go.Scatter(x=dayLabels, y=saveBalances,
+        fill="tonexty", mode="none", name="Balance with %%%.2f savings" % ((saveProportion)*100), fillcolor="rgba(255, 127, 14, 0.5)")
+    trace2 = go.Scatter(x=dayLabels, y=lowerLimitBalances,
+        fill="tozeroy", mode="none", name="Maximum Unplanned Expenditures", fillcolor="rgba(44, 160, 44, 0.5)")
 
-    offline.plot( [trace0, trace1, trace2], filename="projectedBalanceGraph")
+    data = [trace2, trace1, trace0]
+    layout = go.Layout(showlegend=True,
+    yaxis={
+        "type":"linear",
+        "tickprefix":"$"
+    })
+
+    fig = go.Figure(data=data, layout=layout)
+    offline.plot(fig, filename="projectedBalanceGraph")
 
 def test():
     ds = list(rrule(DAILY, dtstart=datetime(2012,12,20), until=datetime(2012,12,24))) #5 days, 20th-24th
@@ -82,13 +110,13 @@ def test():
     assert(t2.doesTransactForDay(ds[2]))
     assert(not t2.doesTransactForDay(ds[3]))
 
-    #Project Balances
+    #Project Transactions
     ts = [
         t,
         t2,
     ]
-    bs = projectBalances(ts, 10, ds[0], ds[4])
-    assert(tuple(bs) == (30, 50, 70, 70, 70))
+    bs = projectDiffs(ts, ds[0], ds[4])
+    assert(tuple(bs) == (20, 20, 20, 0, 0))
 
     #Create Balance Graph
     #createBalanceGraph(bs, ds[0], ds[4]) #WORKS
@@ -116,11 +144,11 @@ def main():
     displayLowerLimit = True
     #END DEFINE
 
-    saveProportion = min(1-savePercentage/100,1)
+    saveProportion = min(savePercentage/100,1)
 
     #Do the actual work
-    balances = projectBalances(transactions, startAmount, fromDate, toDate)
-    createBalanceGraph(balances, fromDate, toDate, saveProportion, displayLowerLimit)
+    diffs = projectDiffs(transactions, fromDate, toDate)
+    createBalanceGraph(diffs, fromDate, toDate, startAmount, saveProportion, displayLowerLimit)
 
 if __name__ == "__main__":
     test()
