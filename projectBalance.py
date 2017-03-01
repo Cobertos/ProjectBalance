@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timedelta
 from dateutil.rrule import rrule, DAILY, YEARLY, MONTHLY, WEEKLY
 import plotly.offline as offline
@@ -47,13 +48,23 @@ def projectBalances(transactions, startAmount, fromDate, toDate):
 
 #def getTransactionsFromFile(filePath):
 
-def createBalanceGraph(balances, fromDate, toDate):
+def createBalanceGraph(balances, fromDate, toDate, saveProportion, displayLowerLimit):
     dayLabels = rrule(DAILY, dtstart=fromDate, until=toDate)
     dayLabels = map((lambda dt: dt.strftime("%a, %b %d")), dayLabels)
     dayLabels = list(dayLabels)
-    trace = go.Scatter(x=dayLabels, y=balances)
 
-    offline.plot( [trace], filename="projectedBalanceGraph")
+    saveBalances = [b * saveProportion if b > 0 else b for b in balances]
+    lowerLimitBalances = []
+    currentLowerLimit = math.inf
+    for i, balance in reversed(list(enumerate(saveBalances))):
+        currentLowerLimit = min(balance,currentLowerLimit)
+        lowerLimitBalances.insert(0, currentLowerLimit)
+
+    trace0 = go.Scatter(x=dayLabels, y=balances, fill="tonexty", mode="none")
+    trace1 = go.Scatter(x=dayLabels, y=saveBalances, fill="tonexty", mode="none")
+    trace2 = go.Scatter(x=dayLabels, y=lowerLimitBalances, fill="tozeroy", mode="none")
+
+    offline.plot( [trace0, trace1, trace2], filename="projectedBalanceGraph")
 
 def test():
     ds = list(rrule(DAILY, dtstart=datetime(2012,12,20), until=datetime(2012,12,24))) #5 days, 20th-24th
@@ -88,14 +99,28 @@ def main():
     fromDate = datetime.today()
     toDate = datetime.today() + timedelta(days=400)
 
-    #DEFINE ALL BUDGETARY CONSTRAINTS
+    #DEFINE ALL BUDGETARY CONSTRAINTS - These are just examples
+    savePercentage = 30
     transactions = [
+        #INCOME
+        Transaction(rrule(WEEKLY,  dtstart=datetime(2017,2,17), until=toDate, interval=2),              1500),   #+1500/biweekly from a specific Friday as the start (like a salary)
+
+        #CHARGES
+        Transaction(rrule(YEARLY,  dtstart=fromDate, until=toDate, bymonth=1, bymonthday=9),            -50),    #50/year charged on 1/9
+        Transaction(rrule(MONTHLY, dtstart=fromDate, until=toDate, bymonth=[6,12], bymonthday=10),      -5000),  #5000/bi-yearly charged 6/10 and 12/10
+        Transaction(rrule(MONTHLY, dtstart=fromDate, until=toDate, bymonthday=9),                       -100),   #100/month charged every 9th
+        Transaction(rrule(MONTHLY, dtstart=fromDate, until=toDate, bymonthday=1),                       -40),    #40/month charged every 1st
+        Transaction(rrule(MONTHLY, dtstart=fromDate, until=toDate, bymonthday=-1),                      -50),    #50/month charged on last day of month
+        Transaction(rrule(MONTHLY, dtstart=fromDate, until=toDate, bymonthday=22),                      -228)    #250/monthly on the 22nd
     ]
+    displayLowerLimit = True
     #END DEFINE
+
+    saveProportion = min(1-savePercentage/100,1)
 
     #Do the actual work
     balances = projectBalances(transactions, startAmount, fromDate, toDate)
-    createBalanceGraph(balances, fromDate, toDate)
+    createBalanceGraph(balances, fromDate, toDate, saveProportion, displayLowerLimit)
 
 if __name__ == "__main__":
     test()
